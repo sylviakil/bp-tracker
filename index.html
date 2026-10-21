@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f6f5c">
+<meta name="color-scheme" content="only light">
 <title>혈압 기록</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -13,11 +14,8 @@
   --bg:#f6f4ef; --card:#fff; --ink:#1d2421; --sub:#5d6a65; --line:#e1ddd3;
   --brand:#1f6f5c; --brand-ink:#fff; --warn:#b4540a; --bad:#b3261e; --ok:#1f6f5c; --mid:#8a6d00;
   --chip:#eef3f1;
+  color-scheme:light;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){--bg:#141817;--card:#1e2422;--ink:#eef2f0;--sub:#a3b0ab;--line:#2f3835;--brand:#4fb89c;--brand-ink:#0b1713;--warn:#f0a35e;--bad:#ff8a80;--ok:#4fb89c;--mid:#e3c25a;--chip:#26302d;color-scheme:dark}
-}
-:root[data-theme="dark"]{--bg:#141817;--card:#1e2422;--ink:#eef2f0;--sub:#a3b0ab;--line:#2f3835;--brand:#4fb89c;--brand-ink:#0b1713;--warn:#f0a35e;--bad:#ff8a80;--ok:#4fb89c;--mid:#e3c25a;--chip:#26302d;color-scheme:dark}
 *{box-sizing:border-box}
 html{font-size:20px}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;line-height:1.45;}
