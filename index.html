@@ -74,6 +74,19 @@ svg text{font-family:inherit}
 .pedit input{font:inherit;font-size:1.2rem;padding:10px 12px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);min-height:52px;width:100%}
 .pedit .rowbtn{display:flex;gap:8px;flex-wrap:wrap}
 .pedit .rowbtn .btn{flex:1;min-width:96px}
+.xp h3{margin:0 0 6px;font-size:1rem}
+.xp .hintline{font-size:.8rem;color:var(--sub);margin:0 0 10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{font:inherit;font-weight:700;font-size:.85rem;padding:8px 12px;border-radius:999px;border:2px solid var(--line);background:var(--card);color:var(--ink);min-height:44px}
+.chip[aria-pressed=true]{border-color:var(--brand);background:var(--brand);color:var(--brand-ink)}
+.xrow{padding:10px 0;border-top:1px dashed var(--line)}
+.xrow b{display:block;margin-bottom:6px;font-size:.9rem}
+.xline{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
+.xline span.lb{min-width:3.6em;font-size:.78rem;color:var(--sub)}
+.xv{font:inherit;font-weight:800;font-size:1.05rem;font-variant-numeric:tabular-nums;min-width:56px;min-height:46px;padding:6px 10px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink)}
+.xv[aria-pressed=true]{border-color:var(--brand);background:var(--brand);color:var(--brand-ink)}
+.xv[disabled]{opacity:.9}
+.xbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -111,9 +124,20 @@ svg text{font-family:inherit}
   <section id="view-history" hidden>
     <h1>지난 기록</h1>
     <div class="toolbar">
-      <button class="btn ghost" id="share">💬 카톡 등으로 보내기</button>
-      <button class="btn ghost" id="copy">📋 요약 복사</button>
-      <button class="btn ghost" id="csv">⬇️ 엑셀 저장</button>
+      <button class="btn ghost" id="export-open">📤 내보내기 (카톡·엑셀)</button>
+    </div>
+    <div class="card xp" id="export" hidden>
+      <h3>내보낼 값 고르기</h3>
+      <p class="hintline">날짜마다 3번 잰 값 중 보낼 값을 높은 혈압, 낮은 혈압 따로 고를 수 있어요.</p>
+      <div class="chips" id="x-range" role="group" aria-label="기간"></div>
+      <div class="chips" id="x-preset" role="group" aria-label="한 번에 고르기"></div>
+      <div id="x-list"></div>
+      <div class="xbar">
+        <button class="btn" id="share" style="flex:1 1 100%">💬 카톡 등으로 보내기</button>
+        <button class="btn ghost" id="copy">📋 복사</button>
+        <button class="btn ghost" id="csv">⬇️ 엑셀 저장</button>
+        <button class="btn ghost" id="export-close">닫기</button>
+      </div>
     </div>
     <textarea id="fallback" rows="8" hidden style="width:100%;font:inherit;font-size:.8rem;margin-bottom:12px;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:12px;padding:10px"></textarea>
     <div class="card" id="chart-card" hidden>
@@ -328,31 +352,97 @@ svg text{font-family:inherit}
   }
 
   // ---- 내보내기 ----
+  // 날짜별로 3번 잰 값 중 보낼 값을 높은 혈압·낮은 혈압 따로 고른다.
+  const RANGES = [[7, "최근 7일"], [14, "최근 14일"], [30, "최근 30일"], [0, "전체"]];
+  const PRESETS = [["n0", "1회차"], ["n1", "2회차"], ["n2", "3회차"], ["max", "가장 높은 값"], ["min", "가장 낮은 값"], ["all", "3회 전부"]];
+  let xRange = 14, xPreset = "n0", xPick = {}; // xPick[키] = { s: 높은 혈압 회차, d: 낮은 혈압 회차 }
   const sorted = () => [...mine()].sort((a, b) => (a.date + a.slot > b.date + b.slot ? 1 : -1));
-  function summaryText() {
-    const lines = sorted().slice(-28).map((x) => {
-      return `${x.date} ${fmtTime(x.time)} ${x.slot === "am" ? "아침" : "저녁"}  ${x.r.map((v) => v.join("/")).join(", ")}`;
+  const keyOf = (x) => x.date + "|" + x.slot;
+  const slotKo = (sl) => (sl === "am" ? "아침" : "저녁");
+  function xRecords() {
+    const all = sorted();
+    if (!xRange) return all;
+    const from = new Date(); from.setDate(from.getDate() - xRange + 1);
+    const lim = ymd(from);
+    return all.filter((x) => x.date >= lim);
+  }
+  function presetIdx(x, mode) {
+    const col = (k) => x.r.map((v) => v[k]);
+    const pick = (arr, f) => arr.indexOf(f(...arr));
+    if (mode === "max") return { s: pick(col(0), Math.max), d: pick(col(1), Math.max) };
+    if (mode === "min") return { s: pick(col(0), Math.min), d: pick(col(1), Math.min) };
+    const n = Math.min(+mode.slice(1), x.r.length - 1);
+    return { s: n, d: n };
+  }
+  function applyPreset(mode) {
+    xPreset = mode;
+    if (mode !== "all") xRecords().forEach((x) => { xPick[keyOf(x)] = presetIdx(x, mode); });
+  }
+  function renderExport() {
+    $("x-range").innerHTML = RANGES.map(([n, t]) => `<button class="chip" data-range="${n}" aria-pressed="${n === xRange}">${t}</button>`).join("");
+    $("x-preset").innerHTML = PRESETS.map(([m, t]) => `<button class="chip" data-preset="${m}" aria-pressed="${m === xPreset}">${t}</button>`).join("");
+    const recs = xRecords();
+    $("x-list").innerHTML = recs.length ? [...recs].reverse().map((x) => {
+      const k = keyOf(x), pk = xPick[k] || presetIdx(x, "n0"), all = xPreset === "all";
+      const line = (lb, col, which) => `<div class="xline"><span class="lb">${lb}</span>${x.r.map((v, n) =>
+        `<button class="xv" ${all ? "disabled" : ""} data-k="${k}" data-w="${which}" data-n="${n}" aria-pressed="${all || pk[which] === n}" aria-label="${n + 1}회 ${lb} ${v[col]}">${v[col]}</button>`).join("")}</div>`;
+      return `<div class="xrow"><b>${x.date.slice(5).replace("-", "월 ")}일 ${slotName(x.slot)} <small style="font-weight:500;color:var(--sub)">${fmtTime(x.time)}</small></b>${line("높은 혈압", 0, "s")}${line("낮은 혈압", 1, "d")}</div>`;
+    }).join("") : '<div class="empty">이 기간에는 기록이 없어요.</div>';
+  }
+  function openExport() {
+    if (!mine().length) return toast("기록이 없어요");
+    xPick = {}; applyPreset(xPreset === "all" ? "n0" : xPreset);
+    $("export").hidden = false; renderExport(); $("export").scrollIntoView({ block: "start" });
+  }
+  $("export-open").onclick = openExport;
+  $("export-close").onclick = () => { $("export").hidden = true; $("fallback").hidden = true; };
+  $("x-range").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-range]"); if (!b) return;
+    xRange = +b.dataset.range; if (xPreset !== "all" && xPreset !== "custom") applyPreset(xPreset); renderExport();
+  });
+  $("x-preset").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-preset]"); if (!b) return;
+    applyPreset(b.dataset.preset); renderExport();
+  });
+  $("x-list").addEventListener("click", (e) => {
+    const b = e.target.closest(".xv"); if (!b || b.disabled) return;
+    const k = b.dataset.k; (xPick[k] ||= { s: 0, d: 0 })[b.dataset.w] = +b.dataset.n;
+    xPreset = "custom"; renderExport();
+  });
+  // 내보낼 행: 전부 모드면 3회 모두, 아니면 고른 값 1개
+  function exportRows() {
+    return xRecords().map((x) => {
+      const pk = xPick[keyOf(x)] || presetIdx(x, "n0");
+      return { x, vals: xPreset === "all" ? x.r : [[x.r[pk.s][0], x.r[pk.d][1]]], pk };
     });
-    return `[가정혈압 기록] ${curName()} · 최근 ${lines.length}회 (높은/낮은 혈압)\n${lines.join("\n")}`;
+  }
+  function summaryText() {
+    const rows = exportRows();
+    const label = xPreset === "all" ? "3회 전부" : "날짜별 1회 선택값";
+    const lines = rows.map(({ x, vals }) => `${x.date} ${fmtTime(x.time)} ${slotKo(x.slot)}  ${vals.map((v) => v.join("/")).join(", ")}`);
+    return `[가정혈압 기록] ${curName()} · ${label} (높은/낮은 혈압)\n${lines.join("\n")}`;
   }
   async function copyText(text) {
     try { await navigator.clipboard.writeText(text); toast("복사했어요. 카톡에 붙여넣으세요"); }
     catch { const ta = $("fallback"); ta.hidden = false; ta.value = text; ta.focus(); ta.select(); toast("글을 길게 눌러 복사하세요"); }
   }
-  $("copy").onclick = () => { if (!mine().length) return toast("기록이 없어요"); copyText(summaryText()); };
+  const noRows = () => { if (!exportRows().length) { toast("이 기간에는 기록이 없어요"); return true; } return false; };
+  $("copy").onclick = () => { if (!noRows()) copyText(summaryText()); };
   $("share").onclick = async () => {
-    if (!mine().length) return toast("기록이 없어요");
+    if (noRows()) return;
     const text = summaryText();
     if (navigator.share) {
       try { await navigator.share({ title: "혈압 기록", text }); } catch (e) { if (e?.name !== "AbortError") copyText(text); }
     } else copyText(text);
   };
   $("csv").onclick = () => {
-    if (!mine().length) return toast("기록이 없어요");
-    const rows = [["이름", "날짜", "시간", "아침/저녁", "1회 높은", "1회 낮은", "2회 높은", "2회 낮은", "3회 높은", "3회 낮은"]];
-    sorted().forEach((x) => {
-      const cells = [0, 1, 2].flatMap((i) => x.r[i] || ["", ""]);
-      rows.push([curName(), x.date, x.time || "", x.slot === "am" ? "아침" : "저녁", ...cells]);
+    if (noRows()) return;
+    const all = xPreset === "all";
+    const rows = [all ? ["이름", "날짜", "시간", "아침/저녁", "1회 높은", "1회 낮은", "2회 높은", "2회 낮은", "3회 높은", "3회 낮은"]
+                      : ["이름", "날짜", "시간", "아침/저녁", "높은 혈압", "낮은 혈압", "높은 혈압 회차", "낮은 혈압 회차"]];
+    exportRows().forEach(({ x, vals, pk }) => {
+      const head = [curName(), x.date, x.time || "", slotKo(x.slot)];
+      rows.push(all ? [...head, ...[0, 1, 2].flatMap((i) => x.r[i] || ["", ""])] : [...head, vals[0][0], vals[0][1], pk.s + 1, pk.d + 1]);
     });
     const blob = new Blob(["\ufeff" + rows.map((r) => r.join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `blood-pressure_${ymd()}.csv`;
@@ -379,7 +469,7 @@ svg text{font-family:inherit}
   }
   const closeEdit = () => { editing = null; $("pedit").hidden = true; };
   function switchTo(id) {
-    cur = id; lsSet(CKEY, cur); closeEdit(); renderPeople(); loadCurrent();
+    cur = id; lsSet(CKEY, cur); closeEdit(); renderPeople(); loadCurrent(); $("export").hidden = true;
     if (!$("view-history").hidden) renderHistory();
     $("fallback").hidden = true;
   }
